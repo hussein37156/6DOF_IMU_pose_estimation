@@ -1,0 +1,128 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>ROS2 Phone Sensors</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js" integrity="sha384-5AkRS45j4ukf+JbWAfHL8P4onPA9p0KwwP7pUdjSQA3ss9edbJUJc/XcYAiheSSz" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>ROS2 Phone Sensors : Test permissions</h1>
+
+    <form id="access" method="POST" action="#">
+        <input type="submit" value="Ask for access">
+    </form>
+
+    <a href="/">Back to home page</a>
+
+    <div class="select">
+        <label for="videoSource1">Video source 1: </label><select id="videoSource1"></select>
+    </div>
+
+    <video id="video1" autoplay muted playsinline></video>
+
+    <div class="select">
+        <label for="videoSource2">Video source 2: </label><select id="videoSource2"></select>
+    </div>
+
+    <video id="video2" autoplay muted playsinline></video>
+
+    <h2>Receive:</h2>
+    <div id="log"></div>
+
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function() {
+            function logMessage(text) {
+                $("#log").append("<br>" + $("<div/>").text(text).html());
+            };
+
+            // source https://github.com/samdutton/simpl/blob/gh-pages/getusermedia/sources/js/main.js
+            var videoElement1 = document.querySelector('video#video1');
+            var videoElement2 = document.querySelector('video#video2');
+            var videoSelect1 = document.querySelector('select#videoSource1');
+            var videoSelect2 = document.querySelector('select#videoSource2');
+
+            videoSelect1.onchange = getStream1;
+            videoSelect2.onchange = getStream2;
+
+            getStream1().then(getDevices).then(gotDevices);
+
+            function getDevices() {
+                return navigator.mediaDevices.enumerateDevices();
+            }
+
+            function gotDevices(deviceInfos) {
+                window.deviceInfos = deviceInfos; // make available to console
+                console.log('Available input and output devices:', deviceInfos);
+                for (const deviceInfo of deviceInfos) {
+                    const option1 = document.createElement('option');
+                    option1.value = deviceInfo.deviceId;
+                    const option2 = document.createElement('option');
+                    option2.value = deviceInfo.deviceId;
+                    if (deviceInfo.kind === 'videoinput') {
+                        option1.text = deviceInfo.label || `Camera ${videoSelect1.length + 1}`;
+                        videoSelect1.appendChild(option1);
+                        option2.text = deviceInfo.label || `Camera ${videoSelect2.length + 1}`;
+                        videoSelect2.appendChild(option2);
+                        //logMessage(JSON.stringify(deviceInfo.toJSON()));
+                    }
+                }
+                // After populating both selects, start the second stream
+                getStream2();
+            }
+
+            function getStream1() {
+                if (window.stream1) {
+                    window.stream1.getTracks().forEach(track => {
+                        track.stop();
+                    });
+                }
+                const videoSource = videoSelect1.value;
+                logMessage("source 1: " + videoSource)
+                const constraints = {
+                    video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+                };
+                return navigator.mediaDevices.getUserMedia(constraints).then(gotStream1).catch(handleError);
+            }
+
+            function gotStream1(stream) {
+                window.stream1 = stream; // make stream available to console
+                videoSelect1.selectedIndex = [...videoSelect1.options].
+                    findIndex(option => option.text === stream.getVideoTracks()[0].label);
+                videoElement1.srcObject = stream;
+            }
+
+            function getStream2() {
+                if (window.stream2) {
+                    window.stream2.getTracks().forEach(track => {
+                        track.stop();
+                    });
+                }
+                const videoSource = videoSelect2.value;
+                logMessage("source 2: " + videoSource)
+                const constraints = {
+                    video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+                };
+                return navigator.mediaDevices.getUserMedia(constraints).then(gotStream2).catch(handleError);
+            }
+
+            function gotStream2(stream) {
+                window.stream2 = stream; // make stream available to console
+                videoSelect2.selectedIndex = [...videoSelect2.options].
+                    findIndex(option => option.text === stream.getVideoTracks()[0].label);
+                videoElement2.srcObject = stream;
+            }
+
+            function handleError(error) {
+                console.error('Error: ', error);
+                logMessage(error.toString());
+            }
+
+            $( "#access" ).on( "submit", function( event ) {
+                logMessage("Button pushed");
+                event.preventDefault();
+            });
+        });
+    </script>
+
+</body>
+</html>

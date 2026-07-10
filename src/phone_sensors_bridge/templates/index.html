@@ -1,0 +1,131 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>ROS2 Phone Sensors</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js" integrity="sha384-5AkRS45j4ukf+JbWAfHL8P4onPA9p0KwwP7pUdjSQA3ss9edbJUJc/XcYAiheSSz" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>ROS2 Phone Sensors</h1>
+
+    <form id="trigger" method="POST" action="#">
+        <input type="submit" value="Trigger">
+    </form>
+
+    <form id="measure-latency" method="POST" action="#">
+        <input type="submit" value="Measure latency">
+    </form>
+
+    <div><a href="/test-video-permissions">Open video test page</a></div>
+    <div><a href="/test-web-usb">Open Web USB test page</a></div>
+    <div><a href="/test-serial">Open Web Serial test page</a></div>
+
+    <video id="video-camera1" autoplay muted playsinline></video>
+    <video id="video-camera2" autoplay muted playsinline></video>
+
+    <div id="usb-section" style="display:none">
+        <h2>USB Device</h2>
+        <button type="button" id="usb-connect">Connect USB device</button>
+        <button type="button" id="usb-disconnect">Disconnect</button>
+    </div>
+
+    <h2>Logs:</h2>
+    <div id="log"></div>
+
+    <script src="{{ url_for('static', filename='time_reference.js') }}"></script>
+    <script src="{{ url_for('static', filename='device_motion_orientation.js') }}"></script>
+    <script src="{{ url_for('static', filename='geolocation.js') }}"></script>
+    <script src="{{ url_for('static', filename='video.js') }}"></script>
+    <script src="{{ url_for('static', filename='latency.js') }}"></script>
+    <script src="{{ url_for('static', filename='usb.js') }}"></script>
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function() {
+            function logMessage(text) {
+                $("#log").append("<br>" + $("<div/>").text(text).html());
+            };
+
+            // Request permissions on page load, before socket connects
+            requestMotionPermission(logMessage);      // from device_motion_orientation.js
+            requestGeolocationPermission(logMessage); // from geolocation.js
+
+            var socket = io();
+
+            ['log','info','warn','error'].forEach(function (verb) {
+                console[verb] = (function (method, verb, log) {
+                    return function () {
+                        method.apply(console, arguments);
+                        socket.emit(verb, Array.prototype.slice.call(arguments).join(' '));
+                    };
+                })(console[verb], verb, log);
+            });
+
+            // This is an example for adding a button action
+            $( "#trigger" ).on( "submit", function( event ) {
+                logMessage("Trigger pushed");
+                event.preventDefault();
+            });
+
+            var triggerLatency = null;
+            $( "#measure-latency" ).on( "submit", function( event ) {
+                event.preventDefault();
+                if (triggerLatency) triggerLatency();
+            });
+
+            // Screen Wake Lock: prevent screen from blanking while connected
+            var wakeLock = null;
+            async function requestWakeLock() {
+                if ('wakeLock' in navigator) {
+                    try {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                        wakeLock.addEventListener('release', function() {
+                            wakeLock = null;
+                        });
+                    } catch (err) {
+                        console.warn('Wake lock request failed: ' + err.message);
+                    }
+                }
+            }
+            // Re-acquire wake lock when page becomes visible again (lock is auto-released on hide)
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible' && socket.connected) {
+                    requestWakeLock();
+                }
+            });
+
+            // Register publishers once so listeners are not duplicated on reconnect
+            registerTimeReferencePublisher(socket); // from time_reference.js
+            registerDeviceMotionOrientationPublisher(socket, window); // from device_motion_orientation.js
+            registerGeolocationPublisher(socket, window); // from geolocation.js
+            registerVideoFunctions(socket, document.getElementById('video-camera1'), 'camera1'); // from video.js
+            registerVideoFunctions(socket, document.getElementById('video-camera2'), 'camera2'); // from video.js
+            triggerLatency = registerLatencyMeasurement(socket, logMessage); // from latency.js
+            registerUSBFunctions(socket); // from usb.js
+
+            socket.on("connect", function() {
+                socket.emit("info", "Connected to server");
+                logMessage("Connected to server");
+                requestWakeLock();
+            });
+
+            socket.on("disconnect", function() {
+                logMessage("Disconnected from server");
+                if (wakeLock) {
+                    wakeLock.release();
+                }
+            });
+
+            socket.on("stream_stop", function () {
+                socket.emit("info", "Stream stopped by server");
+                logMessage("Stream stopped by server");
+            });
+
+            socket.on("stream_start", function () {
+                socket.emit("info", "Stream started by server");
+                logMessage("Stream started by server");
+            });
+        });
+    </script>
+
+</body>
+</html>
