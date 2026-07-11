@@ -17,7 +17,7 @@ function requestMotionPermission(logCallback) {
 }
 
 function registerDeviceMotionOrientationPublisher(socket, window) {
-    var include_gravity = false;
+    var include_gravity = true;
     window.motion_init = false;
     window.orientation_init = false;
 
